@@ -1,0 +1,20 @@
+{
+  "users": {
+    "395631342177615872": {
+      "username": "chris2424a",
+      "games_played": 1,
+      "wins": 1,
+      "losses": 0,
+      "best_attempts": 10,
+      "best_time_seconds": 84.64
+    },
+    "368475291389001741": {
+      "username": "moujahentin",
+      "games_played": 2,
+      "wins": 2,
+      "losses": 0,
+      "best_attempts": 4,
+      "best_time_seconds": 35.33
+    }
+  }
+}
