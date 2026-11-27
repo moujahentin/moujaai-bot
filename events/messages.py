@@ -1,4 +1,6 @@
 import asyncio
+import logging
+from pathlib import Path
 import textwrap
 import time
 
@@ -25,6 +27,8 @@ from utils.number_guess import (
     start_game,
 )
 from utils.status import get_system_status
+
+logger = logging.getLogger(__name__)
 
 user_last_request: dict[int, float] = {}
 semaphore = asyncio.Semaphore(ASK_MAX_CONCURRENT)
@@ -369,22 +373,49 @@ async def ensure_voice(message: discord.Message):
     return vc
 
 
-async def play_audio_file(message: discord.Message, file_path: str):
-    vc = await ensure_voice(message)
-    if vc is None:
-        return
+async def play_audio_file(message: discord.Message, file_path: str) -> bool:
+    source = None
 
-    if vc.is_playing():
-        vc.stop()
+    try:
+        vc = await ensure_voice(message)
 
-    source = discord.FFmpegPCMAudio(file_path)
-    loop = asyncio.get_running_loop()
-    vc.play(
-        source,
-        after=lambda e: loop.call_soon_threadsafe(
-            asyncio.create_task, cleanup_file_later(file_path)
-        ),
-    )
+        if vc is None:
+            Path(file_path).unlink(missing_ok=True)
+            return False
+
+        if vc.is_playing() or vc.is_paused():
+            vc.stop()
+
+        source = discord.FFmpegPCMAudio(file_path)
+        loop = asyncio.get_running_loop()
+
+        def after_playback(error):
+            if error:
+                logger.error(
+                    "Voice playback failed: %s",
+                    type(error).__name__
+                )
+
+            loop.call_soon_threadsafe(
+                asyncio.create_task,
+                cleanup_file_later(file_path)
+            )
+
+        vc.play(source, after=after_playback)
+        return True
+
+    except Exception as exc:
+        logger.error(
+            "Unable to start voice playback: %s",
+            type(exc).__name__
+        )
+
+        if source is not None:
+            source.cleanup()
+
+        Path(file_path).unlink(missing_ok=True)
+        await message.channel.send("Αποτυχία αναπαραγωγής ήχου.")
+        return False
 
 
 async def handle_say(message: discord.Message, content: str):
@@ -395,12 +426,24 @@ async def handle_say(message: discord.Message, content: str):
         return
 
     if len(text) > 300:
-        await message.channel.send("Το κείμενο είναι πολύ μεγάλο. Κράτα το κάτω από ~300 χαρακτήρες.")
+        await message.channel.send("Το κείμενο είναι πολύ μεγάλο. Μέχρι 300 χαρακτήρες.")
         return
 
-    tts_file = await synthesize_tts(text)
-    await play_audio_file(message, tts_file)
-    await message.channel.send("🗣️ Το είπα.")
+    if not getattr(message.author, "voice", None):
+        await message.channel.send("Μπες πρώτα σε voice channel.")
+        return
+
+    try:
+        tts_file = await synthesize_tts(text)
+    except Exception as exc:
+        logger.error("TTS failed: %s", type(exc).__name__)
+        await message.channel.send("Η υπηρεσία φωνής δεν είναι προσωρινά διαθέσιμη.")
+        return
+
+    if await play_audio_file(message, tts_file):
+        await message.channel.send("🗣️ Αναπαραγωγή φωνής.")
+
+
 async def handle_vask(message: discord.Message, content: str):
     prompt = content[len(f"{COMMAND_PREFIX}vask"):].strip()
 
@@ -411,18 +454,26 @@ async def handle_vask(message: discord.Message, content: str):
     await message.channel.send("🤖 Σκέφτομαι...")
 
     try:
-        reply = ask_ollama(prompt)
-    except Exception as e:
-        await message.channel.send(f"AI error: `{e}`")
+        async with semaphore:
+            reply = await asyncio.to_thread(ask_ollama, prompt)
+    except Exception as exc:
+        logger.error("AI request failed: %s", type(exc).__name__)
+        await message.channel.send("Η υπηρεσία AI δεν είναι προσωρινά διαθέσιμη.")
         return
 
     if not reply:
         await message.channel.send("Δεν πήρα απάντηση από το AI.")
         return
 
-    short_reply = reply[:350]
-    tts_file = await synthesize_tts(short_reply)
-    await play_audio_file(message, tts_file)
-
     shown_reply = reply[:1800]
     await message.channel.send(f"🤖 **AI:**\n{shown_reply}")
+
+    if not getattr(message.author, "voice", None):
+        return
+
+    try:
+        tts_file = await synthesize_tts(reply[:350])
+        await play_audio_file(message, tts_file)
+    except Exception as exc:
+        logger.error("AI voice response failed: %s", type(exc).__name__)
+        await message.channel.send("Η φωνητική απάντηση δεν είναι προσωρινά διαθέσιμη.")

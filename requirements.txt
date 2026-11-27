@@ -3,3 +3,4 @@ python-dotenv>=1.0.1
 requests>=2.32.3
 googletrans==4.0.0rc1
 psutil>=5.9.8
+edge-tts==7.3.1
