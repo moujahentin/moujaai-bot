@@ -12,11 +12,12 @@ from config import (
     ASK_COOLDOWN_SECONDS,
     ASK_MAX_CHARS,
     ASK_MAX_CONCURRENT,
+    AI_MODEL,
+    AI_PROVIDER,
     COMMAND_PREFIX,
-    OLLAMA_MODEL,
     TRANSLATE_REACTIONS,
 )
-from services.ollama_client import ask_ollama
+from services.ai_client import ask_ai
 from utils.embeds import make_embed
 from utils.number_guess import (
     cancel_game,
@@ -77,7 +78,7 @@ def build_help_embed() -> discord.Embed:
         ),
         inline=False,
     )
-    embed.set_footer(text=f"Model: {OLLAMA_MODEL} • Ask cooldown: {ASK_COOLDOWN_SECONDS}s per user")
+    embed.set_footer(text=f"Provider: {AI_PROVIDER} • Model: {AI_MODEL} • Ask cooldown: {ASK_COOLDOWN_SECONDS}s")
     return embed
 
 
@@ -134,9 +135,9 @@ async def handle_ask(message: discord.Message, content: str):
     async with semaphore:
         try:
             async with message.channel.typing():
-                answer = await asyncio.to_thread(ask_ollama, prompt)
+                answer = await asyncio.to_thread(ask_ai, prompt)
         except Exception as exc:
-            print(f"Ollama error: {exc}")
+            logger.error("AI request failed: %s", type(exc).__name__)
             await message.channel.send("⚠️ AI request failed.", delete_after=10)
             return
 
@@ -455,7 +456,7 @@ async def handle_vask(message: discord.Message, content: str):
 
     try:
         async with semaphore:
-            reply = await asyncio.to_thread(ask_ollama, prompt)
+            reply = await asyncio.to_thread(ask_ai, prompt)
     except Exception as exc:
         logger.error("AI request failed: %s", type(exc).__name__)
         await message.channel.send("Η υπηρεσία AI δεν είναι προσωρινά διαθέσιμη.")

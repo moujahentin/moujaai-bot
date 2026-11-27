@@ -12,6 +12,23 @@ OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:120b")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "https://ollama.com/api")
 
+AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama").strip().lower()
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+
+AI_MODELS = {
+    "ollama": OLLAMA_MODEL,
+    "groq": GROQ_MODEL,
+}
+
+if AI_PROVIDER not in AI_MODELS:
+    raise ValueError(f"Unsupported AI provider: {AI_PROVIDER}")
+
+AI_MODEL = AI_MODELS[AI_PROVIDER]
+
+
 COMMAND_PREFIX = os.getenv("COMMAND_PREFIX", "!")
 ASK_MAX_CHARS = int(os.getenv("ASK_MAX_CHARS", "1500"))
 ASK_COOLDOWN_SECONDS = int(os.getenv("ASK_COOLDOWN_SECONDS", "10"))
